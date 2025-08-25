@@ -1,0 +1,1 @@
+// ver canvas para lógica completa
