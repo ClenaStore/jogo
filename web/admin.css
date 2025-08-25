@@ -1,0 +1,12 @@
+body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif; background:#0b0f14; color:#e6f0ff; margin:0}
+.wrap{max-width:980px;margin:24px auto;padding:0 16px}
+h1{margin:0 0 16px}
+.login{display:flex; gap:8px; align-items:center; margin-bottom:16px}
+input,button{padding:10px 12px;border-radius:10px;border:1px solid #1f2a37;background:#0f1722;color:#e6f0ff}
+button{cursor:pointer}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.card{background:linear-gradient(180deg, rgba(18,24,33,.9), rgba(11,15,20,.9)); border:1px solid #1f2a37; border-radius:16px; padding:14px}
+.toolbar{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap}
+#users .row{display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px dashed #1f2a37}
+.tag{padding:.2rem .5rem;border-radius:999px;border:1px solid #334155;font-size:12px}
+.blocked{color:#fecaca}
