@@ -1,15 +1,29 @@
 <!doctype html>
 <html lang="pt-br">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Aviador • Rota 3D</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aviador Online</title>
 <style>
-body{margin:0; background:#05080d; font-family:sans-serif; color:#eee; overflow:hidden}
-#hud{position:absolute; top:10px; left:10px; z-index:10; font-weight:bold; text-shadow:0 0 10px #000}
-#hud span{font-size:28px; color:#7c3aed; text-shadow:0 0 20px #7c3aed,0 0 40px #06b6d4}
-#status{display:block; margin-top:6px; font-size:14px; color:#ccc}
-canvas{display:block}
+:root{
+  --bg:#05080d; --brand:#7c3aed; --brand2:#06b6d4; --ok:#22c55e; --danger:#ef4444;
+}
+*{box-sizing:border-box}
+body{margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:#eee; overflow:hidden;}
+#hud{position:absolute;top:10px;left:10px;z-index:10;font-weight:bold}
+#hud span{font-size:32px;color:var(--brand);text-shadow:0 0 20px var(--brand),0 0 40px var(--brand2)}
+#status{display:block;margin-top:4px;font-size:14px;color:#ccc}
+#userBox{position:absolute;top:10px;right:10px;z-index:10;font-size:14px}
+#userBox button{background:linear-gradient(90deg,var(--brand),var(--brand2));border:none;color:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;font-weight:600}
+canvas{display:block;width:100%;height:100%}
+
+/* Modal login */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:20}
+.modal-content{background:#0f1722;padding:20px;border-radius:12px;box-shadow:0 0 20px #000;width:90%;max-width:320px;text-align:center}
+.modal-content h2{margin:0 0 12px;font-size:20px;color:#fff}
+.modal-content input{width:100%;padding:10px;margin:6px 0;border:1px solid #333;border-radius:8px;background:#111;color:#eee}
+.modal-content button{width:100%;margin-top:10px;padding:10px;background:linear-gradient(90deg,var(--brand),var(--brand2));border:none;border-radius:8px;color:#fff;font-weight:600;cursor:pointer}
+.modal-content small{display:block;margin-top:8px;color:#aaa;cursor:pointer}
 </style>
 </head>
 <body>
@@ -17,13 +31,26 @@ canvas{display:block}
   <span id="mult">1.00</span>x
   <div id="status">Esperando…</div>
 </div>
+<div id="userBox"></div>
 <canvas id="scene"></canvas>
+
+<!-- Modal -->
+<div class="modal" id="loginModal">
+  <div class="modal-content">
+    <h2 id="modalTitle">Entrar</h2>
+    <input type="text" id="nameField" placeholder="Nome" style="display:none">
+    <input type="email" id="emailField" placeholder="Email">
+    <input type="password" id="passField" placeholder="Senha">
+    <button id="submitBtn">Entrar</button>
+    <small id="toggleMode">Não tem conta? Cadastre-se</small>
+  </div>
+</div>
 
 <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 <script>
-let scene,camera,renderer,plane,trailGeom,trailMat,trailLine;
+let scene,camera,renderer,plane,trailGeom,trailMat,trailLine,particles=[];
 let STATE={phase:"WAITING",multiplier:1,crashAt:5};
-let mult=1, running=false, trailPts=[];
+let mult=1,running=false,trailPts=[];
 const canvas=document.getElementById("scene");
 renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
 renderer.setPixelRatio(window.devicePixelRatio);
@@ -31,93 +58,125 @@ renderer.setSize(window.innerWidth,window.innerHeight);
 scene=new THREE.Scene();
 camera=new THREE.PerspectiveCamera(65,window.innerWidth/window.innerHeight,0.1,100);
 camera.position.set(0,1.5,6);
-const amb=new THREE.AmbientLight(0x99aaff,.7);
-const dir=new THREE.DirectionalLight(0xffffff,1); dir.position.set(4,6,5);
-scene.add(amb,dir);
+scene.add(new THREE.AmbientLight(0x99aaff,.7));
+const dir=new THREE.DirectionalLight(0xffffff,1); dir.position.set(4,6,5); scene.add(dir);
 
-// avião menor e bonito
+// Avião
 function buildPlane(){
   const mat1=new THREE.MeshStandardMaterial({color:0x7c3aed,metalness:.6,roughness:.3,emissive:0x220044,emissiveIntensity:.5});
   const mat2=new THREE.MeshStandardMaterial({color:0x06b6d4,emissive:0x003355,emissiveIntensity:.8});
-  const fus=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.12,1.2,16),mat1);
-  fus.rotation.z=Math.PI/2;
-  const nose=new THREE.Mesh(new THREE.ConeGeometry(0.15,0.3,16),mat2);
-  nose.position.set(0.65,0,0); nose.rotation.z=-Math.PI/2;
-  const wing=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.8,0.12),mat2);
-  wing.position.set(0,0,-0.2);
+  const fus=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.12,1.2,16),mat1); fus.rotation.z=Math.PI/2;
+  const nose=new THREE.Mesh(new THREE.ConeGeometry(0.15,0.3,16),mat2); nose.position.set(0.65,0,0); nose.rotation.z=-Math.PI/2;
+  const wing=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.8,0.12),mat2); wing.position.set(0,0,-0.2);
   const wing2=wing.clone(); wing2.position.z=0.2;
   plane=new THREE.Group(); plane.add(fus,nose,wing,wing2);
-  plane.scale.set(0.4,0.4,0.4); // menor
+  plane.scale.set(0.35,0.35,0.35);
   scene.add(plane);
 }
 buildPlane();
 
-// trilha (rota do avião)
+// Trilha
 trailGeom=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3()]);
-trailMat=new THREE.LineBasicMaterial({color:0x06b6d4,linewidth:2});
+trailMat=new THREE.LineBasicMaterial({color:0x06b6d4});
 trailLine=new THREE.Line(trailGeom,trailMat);
 scene.add(trailLine);
 
-// resize
-window.addEventListener("resize",()=>{
-  renderer.setSize(window.innerWidth,window.innerHeight);
-  camera.aspect=window.innerWidth/window.innerHeight;
-  camera.updateProjectionMatrix();
-});
+// Resize
+window.addEventListener("resize",()=>{renderer.setSize(window.innerWidth,window.innerHeight);camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();});
 
-// update posição do avião
+// Update avião
 function updatePlane(mult){
-  const progress=(mult-1)/5; // cresce mais rápido
+  const progress=(mult-1)/5;
   const x=-2+progress*6;
   const y=Math.sin(progress*3)*0.4+0.15*progress;
   plane.position.set(x,y,0);
   plane.rotation.z=Math.min(0.7,progress*1.2);
-  // atualizar trilha
   trailPts.push(new THREE.Vector3(x,y,0));
   if(trailPts.length>200) trailPts.shift();
   trailGeom.setFromPoints(trailPts);
 }
 
-// crash
+// Crash
 function planeCrash(){
-  let v=-0.04;
+  let v=-0.05;
   function fall(){
     if(STATE.phase!=="CRASHED") return;
-    plane.position.y+=v; v-=0.004;
-    plane.rotation.z+=0.1;
-    if(plane.position.y>-3) requestAnimationFrame(fall);
+    plane.position.y+=v; v-=0.005;
+    plane.rotation.z+=0.12;
+    if(plane.position.y>-3){ requestAnimationFrame(fall); }
+    else explode();
   }
   fall();
+  cameraShake();
+}
+function explode(){
+  for(let i=0;i<100;i++){
+    particles.push({x:plane.position.x,y:plane.position.y,vx:(Math.random()-.5)*.2,vy:(Math.random()*.2),life:60});
+  }
+}
+function drawParticles(){
+  const geom=new THREE.SphereGeometry(0.03,6,6);
+  const mat=new THREE.MeshBasicMaterial({color:0xffaa00});
+  particles.forEach(p=>{
+    p.x+=p.vx; p.y+=p.vy; p.vy-=0.003; p.life--;
+    if(p.life>0){const m=new THREE.Mesh(geom,mat);m.position.set(p.x,p.y,0);scene.add(m);setTimeout(()=>scene.remove(m),50);}
+  });
+  particles=particles.filter(p=>p.life>0);
+}
+function cameraShake(){
+  let i=0;function s(){if(i>20)return;camera.position.x=(Math.random()-.5)*0.1;camera.position.y=1.5+(Math.random()-.5)*0.1;i++;requestAnimationFrame(s);}s();
 }
 
-// animação
-function animate(){
-  requestAnimationFrame(animate);
-  if(STATE.phase==="FLYING") updatePlane(STATE.multiplier);
-  renderer.render(scene,camera);
-}
-animate();
+// Loop render
+function animate(){requestAnimationFrame(animate);if(STATE.phase==="FLYING")updatePlane(STATE.multiplier);drawParticles();renderer.render(scene,camera);}animate();
 
-// lógica da rodada
+// Rodada
 function startRound(){
-  running=true; mult=1;
-  STATE.phase="FLYING"; STATE.crashAt=2+Math.random()*8;
+  running=true; mult=1; STATE.phase="FLYING"; STATE.crashAt=2+Math.random()*6;
   document.getElementById("status").textContent="Em voo";
   const id=setInterval(()=>{
-    mult*=1.08; // 🔹 mais rápido
-    STATE.multiplier=mult;
+    mult*=1.1; STATE.multiplier=mult;
     document.getElementById("mult").textContent=mult.toFixed(2);
-    if(mult>=STATE.crashAt){
-      clearInterval(id);
-      STATE.phase="CRASHED"; 
-      document.getElementById("status").textContent="Crash "+STATE.crashAt.toFixed(2)+"x";
-      planeCrash(); running=false;
-      setTimeout(()=>{STATE.phase="WAITING";document.getElementById("status").textContent="Esperando…";trailPts=[];},2000);
-    }
-  },160);
+    if(mult>=STATE.crashAt){clearInterval(id);STATE.phase="CRASHED";document.getElementById("status").textContent="Crash "+STATE.crashAt.toFixed(2)+"x";planeCrash();running=false;mult=1;setTimeout(()=>{STATE.phase="WAITING";document.getElementById("status").textContent="Esperando…";trailPts=[];},2500);} },140);
 }
-// loop de rounds automáticos
-setInterval(()=>{ if(!running && STATE.phase==="WAITING"){ startRound(); } },2000);
+setInterval(()=>{ if(!running&&STATE.phase==="WAITING"){ startRound(); } },2000);
+
+// ===== Login/Cadastro Fake =====
+let users=JSON.parse(localStorage.getItem("users")||"{}");
+let currentUser=null;
+function showUserBox(){
+  const box=document.getElementById("userBox");
+  if(currentUser){
+    box.innerHTML=`Olá, ${currentUser.name} | Saldo: R$1000 <button onclick="logout()">Sair</button>`;
+  }else{
+    box.innerHTML=`<button onclick="openLogin()">Entrar</button>`;
+  }
+}
+function openLogin(){document.getElementById("loginModal").style.display="flex";}
+function logout(){currentUser=null;localStorage.removeItem("aviador_user");showUserBox();}
+document.getElementById("toggleMode").onclick=function(){
+  const nameF=document.getElementById("nameField"),title=document.getElementById("modalTitle"),btn=document.getElementById("submitBtn");
+  if(nameF.style.display==="none"){nameF.style.display="block";title.textContent="Cadastro";btn.textContent="Cadastrar";this.textContent="Já tem conta? Entrar";}
+  else{nameF.style.display="none";title.textContent="Entrar";btn.textContent="Entrar";this.textContent="Não tem conta? Cadastre-se";}
+};
+document.getElementById("submitBtn").onclick=function(){
+  const name=document.getElementById("nameField").value||"Jogador";
+  const email=document.getElementById("emailField").value;
+  const pass=document.getElementById("passField").value;
+  const isReg=document.getElementById("nameField").style.display==="block";
+  if(!email||!pass){alert("Preencha os campos");return;}
+  if(isReg){
+    if(users[email]){alert("Email já cadastrado!");return;}
+    users[email]={name,email,pass};localStorage.setItem("users",JSON.stringify(users));alert("Cadastrado com sucesso! Agora entre.");document.getElementById("toggleMode").click();
+  }else{
+    if(users[email]&&users[email].pass===pass){
+      currentUser=users[email];localStorage.setItem("aviador_user",JSON.stringify(currentUser));
+      document.getElementById("loginModal").style.display="none";showUserBox();
+    }else{alert("Credenciais inválidas");}
+  }
+};
+currentUser=JSON.parse(localStorage.getItem("aviador_user")||"null");
+showUserBox();
 </script>
 </body>
 </html>
