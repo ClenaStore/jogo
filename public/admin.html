@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Admin • Aviador</title>
+<style>
+:root{ --bg:#0b0f14; --card:#0f1722; --line:#1f2a37; --text:#e6f0ff; --muted:#9fb3c8; --brand:#7c3aed; --brand2:#06b6d4; }
+*{box-sizing:border-box} body{margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--text)}
+.wrap{max-width:1000px;margin:20px auto;padding:0 16px}
+.card{background:linear-gradient(180deg, rgba(18,24,33,.9), rgba(11,15,20,.9)); border:1px solid var(--line); border-radius:18px; padding:14px}
+h1{margin:0 0 10px} .small{color:var(--muted); font-size:13px}
+input,button{padding:10px; border-radius:10px; border:1px solid #1e293b; background:#0f1722; color:var(--text)}
+button{cursor:pointer}
+table{width:100%; border-collapse:collapse; margin-top:12px}
+th,td{border-bottom:1px solid #1e293b; padding:10px; text-align:left; font-size:14px}
+.actions{display:flex; gap:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>Admin <span class="small">Gerenciar perfis e créditos</span></h1>
+    <div id="auth">
+      <input id="email" placeholder="Email" />
+      <input id="pass" placeholder="Senha" type="password" />
+      <button id="btnLogin">Entrar</button>
+      <span class="small">Padrão: admin@example.com / admin123</span>
+    </div>
+    <div id="panel" style="display:none">
+      <div class="actions">
+        <button id="btnReload">Atualizar lista</button>
+        <button id="btnLogout">Sair</button>
+      </div>
+      <table id="tbl">
+        <thead><tr><th>ID</th><th>Nome</th><th>Email</th><th>Saldo</th><th>Ações</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+let token=null;
+const $=s=>document.querySelector(s);
+$("#btnLogin").onclick = async ()=>{
+  const email=$("#email").value.trim(); const password=$("#pass").value.trim();
+  const r = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})}).then(r=>r.json());
+  if(r.token){ token=r.token; localStorage.setItem('adm_token',token); start(); } else { alert('Falha no login'); }
+};
+function start(){
+  token = localStorage.getItem('adm_token');
+  if(!token){ $("#auth").style.display='block'; $("#panel").style.display='none'; return; }
+  $("#auth").style.display='none'; $("#panel").style.display='block';
+  loadUsers();
+}
+async function loadUsers(){
+  const r = await fetch('/api/users',{headers:{'Authorization':'Bearer '+token}});
+  if(!r.ok){ alert('Acesso negado'); localStorage.removeItem('adm_token'); start(); return; }
+  const rows = await r.json();
+  const tb = $("#tbl tbody"); tb.innerHTML='';
+  rows.forEach(u=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${u.id}</td><td>${u.name}</td><td>${u.email}</td><td>R$ ${u.balance.toFixed(2)}</td>
+    <td>
+      <input type="number" step="1" value="100" id="credit_${u.id}" style="width:100px" />
+      <button data-id="${u.id}" class="btnCred">Creditar</button>
+    </td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('.btnCred').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.getAttribute('data-id');
+      const val = Number(document.getElementById('credit_'+id).value||0);
+      const r = await fetch('/api/credit',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({userId:Number(id), amount:val})}).then(r=>r.json());
+      alert('Novo saldo de '+r.name+': R$ '+r.balance.toFixed(2)); loadUsers();
+    };
+  });
+}
+$("#btnReload").onclick = loadUsers;
+$("#btnLogout").onclick = ()=>{ localStorage.removeItem('adm_token'); start(); };
+start();
+</script>
+</body>
+</html>
