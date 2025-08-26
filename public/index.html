@@ -3,180 +3,121 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Aviador • Online</title>
+<title>Aviador • Rota 3D</title>
 <style>
-:root{
-  --bg:#0b0f14; --card:#0f1722; --line:#1f2a37; --text:#e6f0ff; --muted:#9fb3c8;
-  --brand:#7c3aed; --brand2:#06b6d4; --ok:#22c55e; --danger:#ef4444; --gold:#f59e0b;
-  --shadow:0 20px 60px rgba(0,0,0,.35);
-}
-*{box-sizing:border-box} html,body{height:100%}
-body{margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif; background:radial-gradient(circle at 20% 20%, #0b1430, #05080d 70%); color:var(--text); overflow:hidden}
-.app{max-width:1200px; margin:18px auto; padding:0 16px}
-header{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px}
-.brand{display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:14px; background:linear-gradient(135deg, rgba(124,58,237,.25), rgba(6,182,212,.15)); box-shadow:var(--shadow)}
-.logo{width:38px;height:38px;border-radius:10px;background:conic-gradient(from 0deg, var(--brand), var(--brand2), var(--brand));filter:brightness(1.2)}
-h1{margin:0;font-size:18px}
-.grid{display:grid; grid-template-columns: 360px 1fr 280px; gap:14px}
-@media (max-width:1100px){ .grid{grid-template-columns: 1fr} }
-.card{background:linear-gradient(180deg, rgba(18,24,33,.92), rgba(11,15,20,.95)); border:1px solid var(--line); border-radius:18px; padding:14px; box-shadow:var(--shadow)}
-.sky{position:relative; height:420px; border-radius:14px; overflow:hidden; border:1px solid #202938; background:radial-gradient(900px 500px at 50% 100%, rgba(124,58,237,.12), transparent), linear-gradient(180deg, #0f1722, #05080d)}
-.mult{position:absolute; top:12px; left:12px; font-weight:900; font-size: clamp(28px, 7vw, 58px); text-shadow:0 0 20px #7c3aed, 0 0 40px #06b6d4}
-.status{position:absolute; top:12px; right:12px; font-size:12px; font-weight:900; background:linear-gradient(90deg, var(--brand), var(--brand2)); padding:.4rem .7rem; border-radius:999px; text-transform:uppercase}
-.status.wait{background:linear-gradient(90deg, #64748b, #94a3b8)}
-canvas#scene{position:absolute; inset:0; width:100%; height:100%; display:block}
-.history{margin-top:10px; display:flex; gap:6px; flex-wrap:wrap}
-.tag{padding:.35rem .6rem; border-radius:10px; font-weight:800; font-size:12px; border:1px solid #243041}
-.tag.red{color:#fecaca; background:rgba(127,29,29,.4)}
-.tag.yellow{color:#fef9c3; background:rgba(113,63,18,.4)}
-.tag.green{color:#dcfce7; background:rgba(22,101,52,.4)}
-.tag.purple{color:#ede9fe; background:rgba(76,29,149,.4)}
+body{margin:0; background:#05080d; font-family:sans-serif; color:#eee; overflow:hidden}
+#hud{position:absolute; top:10px; left:10px; z-index:10; font-weight:bold; text-shadow:0 0 10px #000}
+#hud span{font-size:28px; color:#7c3aed; text-shadow:0 0 20px #7c3aed,0 0 40px #06b6d4}
+#status{display:block; margin-top:6px; font-size:14px; color:#ccc}
+canvas{display:block}
 </style>
 </head>
 <body>
-<div class="app">
-  <header>
-    <div class="brand"><div class="logo"></div><h1>Aviador 3D</h1></div>
-    <div class="status wait" id="status">Esperando…</div>
-  </header>
-  <div class="sky">
-    <div class="mult"><span id="mult">1.00</span>x</div>
-    <canvas id="scene"></canvas>
-  </div>
-  <div class="history" id="history"></div>
+<div id="hud">
+  <span id="mult">1.00</span>x
+  <div id="status">Esperando…</div>
 </div>
+<canvas id="scene"></canvas>
 
-<!-- libs -->
 <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-
 <script>
-let scene, camera, renderer, plane, mixer, clock = new THREE.Clock();
-let particles = [], flashLight;
-let STATE = { phase:'WAITING', multiplier:1, crashAt:5.7, history:[] };
+let scene,camera,renderer,plane,trailGeom,trailMat,trailLine;
+let STATE={phase:"WAITING",multiplier:1,crashAt:5};
+let mult=1, running=false, trailPts=[];
+const canvas=document.getElementById("scene");
+renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth,window.innerHeight);
+scene=new THREE.Scene();
+camera=new THREE.PerspectiveCamera(65,window.innerWidth/window.innerHeight,0.1,100);
+camera.position.set(0,1.5,6);
+const amb=new THREE.AmbientLight(0x99aaff,.7);
+const dir=new THREE.DirectionalLight(0xffffff,1); dir.position.set(4,6,5);
+scene.add(amb,dir);
 
-// ===== init 3D =====
-function init3D(){
-  const canvas=document.getElementById("scene");
-  renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(canvas.clientWidth,canvas.clientHeight,false);
-
-  scene=new THREE.Scene();
-  camera=new THREE.PerspectiveCamera(60,canvas.clientWidth/canvas.clientHeight,0.1,100);
-  camera.position.set(0,1.2,5);
-
-  const ambient=new THREE.AmbientLight(0x8899ff,.6);
-  const dir=new THREE.DirectionalLight(0xffffff,.9); dir.position.set(4,6,5);
-  flashLight=new THREE.PointLight(0x7c3aed,0,10); // acende com mult alto
-  scene.add(ambient,dir,flashLight);
-
-  // avião
-  const matBody=new THREE.MeshStandardMaterial({color:0x7c3aed,metalness:.6,roughness:.3,emissive:0x331155,emissiveIntensity:.4});
-  const fuselage=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.15,1.6,16),matBody);
-  fuselage.rotation.z=Math.PI/2;
-
-  const nose=new THREE.Mesh(new THREE.ConeGeometry(0.20,0.4,16), new THREE.MeshStandardMaterial({color:0x06b6d4,emissive:0x003344,emissiveIntensity:.8}));
-  nose.position.set(0.9,0,0); nose.rotation.z=-Math.PI/2;
-
-  const wing=new THREE.Mesh(new THREE.BoxGeometry(0.1,1.2,0.2), new THREE.MeshStandardMaterial({color:0xeeeeee}));
-  wing.position.set(0,0,-0.25);
-  const wing2=wing.clone(); wing2.position.z=0.25;
-
-  const prop=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.4,8), new THREE.MeshStandardMaterial({color:0xffcc00,emissive:0x552200,emissiveIntensity:1}));
-  prop.rotation.x=Math.PI/2; prop.position.set(1.05,0,0);
-
-  plane=new THREE.Group(); plane.add(fuselage,nose,wing,wing2,prop);
-  plane.scale.set(0.6,0.6,0.6);
+// avião menor e bonito
+function buildPlane(){
+  const mat1=new THREE.MeshStandardMaterial({color:0x7c3aed,metalness:.6,roughness:.3,emissive:0x220044,emissiveIntensity:.5});
+  const mat2=new THREE.MeshStandardMaterial({color:0x06b6d4,emissive:0x003355,emissiveIntensity:.8});
+  const fus=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.12,1.2,16),mat1);
+  fus.rotation.z=Math.PI/2;
+  const nose=new THREE.Mesh(new THREE.ConeGeometry(0.15,0.3,16),mat2);
+  nose.position.set(0.65,0,0); nose.rotation.z=-Math.PI/2;
+  const wing=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.8,0.12),mat2);
+  wing.position.set(0,0,-0.2);
+  const wing2=wing.clone(); wing2.position.z=0.2;
+  plane=new THREE.Group(); plane.add(fus,nose,wing,wing2);
+  plane.scale.set(0.4,0.4,0.4); // menor
   scene.add(plane);
-
-  animate();
 }
-function resize(){
-  const canvas=document.getElementById("scene");
-  renderer.setSize(canvas.clientWidth,canvas.clientHeight,false);
-  camera.aspect=canvas.clientWidth/canvas.clientHeight;
+buildPlane();
+
+// trilha (rota do avião)
+trailGeom=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3()]);
+trailMat=new THREE.LineBasicMaterial({color:0x06b6d4,linewidth:2});
+trailLine=new THREE.Line(trailGeom,trailMat);
+scene.add(trailLine);
+
+// resize
+window.addEventListener("resize",()=>{
+  renderer.setSize(window.innerWidth,window.innerHeight);
+  camera.aspect=window.innerWidth/window.innerHeight;
   camera.updateProjectionMatrix();
-}
-window.addEventListener("resize",resize);
+});
 
-// ===== update avião conforme multiplicador =====
+// update posição do avião
 function updatePlane(mult){
-  const progress=Math.min(1,(mult-1)/10);
-  const accel=Math.min(3,1+mult/8);
-  plane.position.x=-2+progress*5*accel;
-  plane.position.y=Math.sin(progress*3)*0.3+0.1*mult/10;
+  const progress=(mult-1)/5; // cresce mais rápido
+  const x=-2+progress*6;
+  const y=Math.sin(progress*3)*0.4+0.15*progress;
+  plane.position.set(x,y,0);
   plane.rotation.z=Math.min(0.7,progress*1.2);
-  plane.children.forEach(c=>{
-    if(c.geometry.type==="CylinderGeometry") c.rotation.y+=0.5; // hélice
-  });
-  // luz pulsante
-  flashLight.intensity=mult>3?Math.sin(mult*0.5)*2:0;
-  flashLight.position.copy(plane.position);
+  // atualizar trilha
+  trailPts.push(new THREE.Vector3(x,y,0));
+  if(trailPts.length>200) trailPts.shift();
+  trailGeom.setFromPoints(trailPts);
 }
 
-// ===== crash anim =====
+// crash
 function planeCrash(){
-  let v=-0.03;
+  let v=-0.04;
   function fall(){
     if(STATE.phase!=="CRASHED") return;
     plane.position.y+=v; v-=0.004;
-    plane.rotation.z+=0.08;
+    plane.rotation.z+=0.1;
     if(plane.position.y>-3) requestAnimationFrame(fall);
-    else particlesExplosion(plane.position);
   }
   fall();
-  cameraShake();
-}
-function particlesExplosion(pos){
-  for(let i=0;i<80;i++){
-    particles.push({x:pos.x,y:pos.y,z:0,vx:(Math.random()-0.5)*.2,vy:(Math.random()*0.2),life:60});
-  }
-}
-function cameraShake(){
-  let i=0; function s(){
-    if(i>20) return;
-    camera.position.x=(Math.random()-.5)*0.1;
-    camera.position.y=1.2+(Math.random()-.5)*0.1;
-    i++; requestAnimationFrame(s);
-  } s();
 }
 
-// ===== particles =====
-function drawParticles(){
-  const geom=new THREE.SphereGeometry(0.03,6,6);
-  const mat=new THREE.MeshBasicMaterial({color:0xffaa00});
-  particles.forEach(p=>{
-    p.x+=p.vx; p.y+=p.vy; p.vy-=0.003; p.life--;
-    if(p.life>0){
-      const m=new THREE.Mesh(geom,mat); m.position.set(p.x,p.y,p.z); scene.add(m);
-      setTimeout(()=>scene.remove(m),50);
-    }
-  });
-  particles=particles.filter(p=>p.life>0);
-}
-
-// ===== render loop =====
+// animação
 function animate(){
   requestAnimationFrame(animate);
   if(STATE.phase==="FLYING") updatePlane(STATE.multiplier);
-  drawParticles();
   renderer.render(scene,camera);
 }
-init3D();
+animate();
 
-// ===== simulação simples =====
-let mult=1; let running=false;
+// lógica da rodada
 function startRound(){
-  running=true; STATE.phase="FLYING"; STATE.crashAt=(Math.random()*8+2);
+  running=true; mult=1;
+  STATE.phase="FLYING"; STATE.crashAt=2+Math.random()*8;
   document.getElementById("status").textContent="Em voo";
   const id=setInterval(()=>{
-    mult*=1.05;
+    mult*=1.08; // 🔹 mais rápido
     STATE.multiplier=mult;
     document.getElementById("mult").textContent=mult.toFixed(2);
-    if(mult>=STATE.crashAt){ clearInterval(id); STATE.phase="CRASHED"; document.getElementById("status").textContent="Crash "+STATE.crashAt.toFixed(2)+"x"; planeCrash(); running=false; mult=1; }
-  },200);
+    if(mult>=STATE.crashAt){
+      clearInterval(id);
+      STATE.phase="CRASHED"; 
+      document.getElementById("status").textContent="Crash "+STATE.crashAt.toFixed(2)+"x";
+      planeCrash(); running=false;
+      setTimeout(()=>{STATE.phase="WAITING";document.getElementById("status").textContent="Esperando…";trailPts=[];},2000);
+    }
+  },160);
 }
-setInterval(()=>{ if(!running){ STATE.phase="WAITING"; document.getElementById("status").textContent="Esperando…"; setTimeout(startRound,2000);} },1000);
+// loop de rounds automáticos
+setInterval(()=>{ if(!running && STATE.phase==="WAITING"){ startRound(); } },2000);
 </script>
 </body>
 </html>
